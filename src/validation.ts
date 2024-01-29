@@ -8,3 +8,10 @@ export const SignInModel = t.Object({
   email: t.String(),
   password: t.String(),
 });
+
+export const CookieModel = t.Cookie({
+  session: t.Object({
+    id: t.String(),
+    email: t.String(),
+  }),
+});
