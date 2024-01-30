@@ -1,5 +1,8 @@
 import Elysia, { t } from "elysia";
+import jwt from "@elysiajs/jwt";
+import bearer from "@elysiajs/bearer";
 import { logger } from "@bogeychan/elysia-logger";
+
 import { ResponseModel, SignInModel } from "./validation";
 import {
   createUserAndReturnUser,
@@ -7,11 +10,11 @@ import {
   getUserById,
   getUsers,
 } from "./services";
-import jwt from "@elysiajs/jwt";
-import bearer from "@elysiajs/bearer";
-import { getAccessTokenFromHeader, verifyHashedPassword } from "./utils";
+import { verifyHashedPassword } from "./utils";
+import cors from "@elysiajs/cors";
 
 export const routes = new Elysia()
+  .use(cors())
   .use(logger({
     autoLogging: true,
     transport: {
@@ -24,7 +27,7 @@ export const routes = new Elysia()
   .use(bearer())
   .use(jwt({
     name: "jwt",
-    secret: "big-secret",
+    secret: Bun.env.JWT_SECRET as string,
     exp: "5d",
   }))
   .group(
@@ -49,18 +52,17 @@ export const routes = new Elysia()
         // --- GET --- /current-user
         .get(
           "/current-user",
-          async ({ set, headers, jwt, log }) => {
-            const accessToken = getAccessTokenFromHeader(headers);
+          async ({ set, bearer, jwt, log, cookie: { session } }) => {
             try {
-              const jwtObj = await jwt.verify(accessToken);
+              // @ts-ignore
+              // const userId = bearer;
+              // @ts-ignore
+              // const { userId } = await jwt.verify(
+              //   JSON.stringify(bearer),
+              // );
+              const { userId } = await jwt.verify(bearer);
 
-              if (!jwtObj) {
-                log.error(`Unable to verify jwt`);
-              }
-              // @ts-ignore: Does exist.
-              const { userId } = jwtObj;
-
-              log.debug(`Fetching user with id=${userId} from database.`);
+              log.info(`Fetching user with id=${userId} from database.`);
 
               const user = await getUserById({ id: userId });
 
@@ -72,8 +74,9 @@ export const routes = new Elysia()
                 email: user.email,
               };
             } catch (err) {
+              log.error({ bearer, jwt });
               log.error(`Unable to verify jwt.`, { error: err });
-              set.status = 500;
+              set.status = 401;
               return {
                 success: false,
                 message: err,
@@ -81,8 +84,15 @@ export const routes = new Elysia()
             }
           },
           {
-            beforeHandle({ bearer, set }) {
+            // cookie: t.Cookie({
+            //   session: t.Optional(t.Object({
+            //     id: t.String(),
+            //     email: t.String(),
+            //   })),
+            // }),
+            beforeHandle({ bearer, set, log }) {
               if (!bearer) {
+                log.error(`No bearer token found.`);
                 set.status = 400;
                 set.headers[
                   "www-Authenticate"
@@ -106,14 +116,17 @@ export const routes = new Elysia()
               const newUser = await createUserAndReturnUser(body);
               log.info({ user: newUser }, `User was created.`);
 
+              // --- JWT
               const accessToken = await jwt.sign({
                 userId: newUser._id,
               });
               log.info({ accessToken }, `Access-Token was set.`);
-              session.value = {
-                id: newUser._id,
-                email: newUser.email,
-              };
+              // --- COOKIE
+              session.set({
+                value: accessToken,
+                maxAge: 15 * 60 * 1000,
+                httpOnly: true,
+              });
               log.info({ session }, `Cookie was set.`);
 
               set.headers = {
@@ -130,14 +143,15 @@ export const routes = new Elysia()
             } catch (err) {
               log.error(
                 { error: err },
-                `Something went wrong creating the user / setting the cookie.`,
+                `User was not signed up; Someone already used this email address to create an account.`,
               );
-              set.status = 500;
-              log.error(`Error code 500!`);
+
+              set.status = 401;
 
               return {
                 success: false,
-                message: `User was not signed up; something went wrong.`,
+                message:
+                  `User was not signed up; Someone already used this email address to create an account.`,
               };
             }
           },
@@ -153,7 +167,7 @@ export const routes = new Elysia()
         .post(
           "/sign-in",
           async ({ body, log, set, jwt, cookie: { session } }) => {
-            log.info({ body }, "User signed in");
+            log.info("New sign-in request.", { body });
 
             async function handleUserSignIn(
               { email, password }: { email: string; password: string },
@@ -178,10 +192,13 @@ export const routes = new Elysia()
               });
 
               log.info({ accessToken }, `Access-Token was set.`);
-              session.value = {
-                id: existingUser._id,
-                email: existingUser.email,
-              };
+
+              // --- COOKIE
+              session.set({
+                value: accessToken,
+                maxAge: 15 * 60 * 1000,
+                httpOnly: true,
+              });
               log.info({ session }, `Cookie was set.`);
 
               set.headers = {
@@ -190,14 +207,24 @@ export const routes = new Elysia()
               log.debug(`Authorization header set.`);
             }
 
-            await handleUserSignIn(body);
+            try {
+              await handleUserSignIn(body);
 
-            set.status = 201;
-            log.debug(`Response status-code set.`);
-            return {
-              success: true,
-              message: "Signed in successfully.",
-            };
+              set.status = 201;
+              log.debug(`Response status-code set.`);
+              return {
+                success: true,
+                message: "Signed in successfully.",
+              };
+            } catch (err) {
+              log.error(`Unauthorized.`, { error: err });
+              set.status = 401;
+
+              return {
+                success: false,
+                message: `Email + Password combination was not found in db.`,
+              };
+            }
           },
           {
             body: SignInModel,
@@ -208,14 +235,17 @@ export const routes = new Elysia()
         //
         //
         // --- POST --- /sign-out
-        .post("/sign-out", ({ body, log }) => {
-          log.info({ body }, "User signed out");
+        .post("/sign-out", ({ log, cookie: { session } }) => {
+          log.info(`Sign out request received.`);
+          session.remove();
+
+          log.info("User signed out");
           return {
             success: true,
             message: "Signed out successfully",
           };
         }, {
-          body: SignInModel,
+          // body: SignInModel,
           response: ResponseModel,
         }),
   );

@@ -5,7 +5,9 @@ export const ResponseModel = t.Object({
   message: t.String(),
 });
 export const SignInModel = t.Object({
-  email: t.String(),
+  email: t.String({
+    format: "email",
+  }),
   password: t.String(),
 });
 
