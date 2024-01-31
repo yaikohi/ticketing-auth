@@ -5,7 +5,6 @@ import mongoose from "mongoose";
 import cors from "@elysiajs/cors";
 
 export const PORT = 5000;
-export const URL = `http://localhost:${PORT}`;
 
 const app = new Elysia()
   .use(cors())
@@ -28,9 +27,9 @@ const app = new Elysia()
       throw new Error(`'JWT_SECRET' must be defined!`);
     }
     try {
-      const MongoDBURI = Bun.env.NODE_ENV === "development"
-        ? `mongodb://localhost:27017/?directConnection=true&serverSelectionTimeoutMS=2000`
-        : `mongodb://auth-mongo-srv:27017/auth`;
+      const MongoDBURI = Bun.env.NODE_ENV === "production"
+        ? `mongodb://auth-mongo-srv:27017/auth`
+        : `mongodb://localhost:27017/?directConnection=true&serverSelectionTimeoutMS=2000`;
 
       console.log(`Connecting to ${MongoDBURI}...`);
       await mongoose.connect(MongoDBURI);

@@ -210,7 +210,7 @@ export const routes = new Elysia()
             try {
               await handleUserSignIn(body);
 
-              set.status = 201;
+              set.status = 200;
               log.debug(`Response status-code set.`);
               return {
                 success: true,
@@ -235,10 +235,10 @@ export const routes = new Elysia()
         //
         //
         // --- POST --- /sign-out
-        .post("/sign-out", ({ log, cookie: { session } }) => {
+        .post("/sign-out", ({ set, log, cookie: { session } }) => {
           log.info(`Sign out request received.`);
           session.remove();
-
+          set.status = 200;
           log.info("User signed out");
           return {
             success: true,

@@ -56,6 +56,27 @@ export async function createUser(
 }
 
 /**
+ * Deltes a user record from the database.
+ */
+export async function deleteUserById(
+  { id }: { id: Pick<IUser, "_id"> },
+) {
+  await User.deleteOne({
+    _id: id,
+  });
+}
+/**
+ * **FOR TESTING**
+ * Deletes a user record from the database by email.
+ */
+export async function deleteUserByEmail(
+  { email }: Pick<IUser, "email">,
+) {
+  await User.deleteOne({
+    email,
+  });
+}
+/**
  * Updates a user password after finding the user by id.
  */
 export async function updateUserPasswordByUserId(
