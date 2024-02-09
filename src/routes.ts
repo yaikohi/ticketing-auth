@@ -121,11 +121,14 @@ export const routes = new Elysia()
                 userId: newUser._id,
               });
               log.info({ accessToken }, `Access-Token was set.`);
+
               // --- COOKIE
               session.set({
                 value: accessToken,
-                maxAge: 15 * 60 * 1000,
                 httpOnly: true,
+                maxAge: 15 * 60 * 1000,
+                secure: Bun.env.NODE_ENV !== "production",
+                sameSite: "strict",
               });
               log.info({ session }, `Cookie was set.`);
 
@@ -143,7 +146,7 @@ export const routes = new Elysia()
             } catch (err) {
               log.error(
                 { error: err },
-                `User was not signed up; Someone already used this email address to create an account.`,
+                `Someone already used this email address to create an account.`,
               );
 
               set.status = 401;
